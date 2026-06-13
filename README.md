@@ -1,131 +1,203 @@
-# Shokz MP3 Manager
+# shockz-mp3-manager-cli
 
-A small CLI for downloading YouTube audio and loading it onto **Shokz OpenSwim** bone-conduction headphones in MP3 mode.
+A CLI for downloading YouTube audio and loading it onto **Shokz OpenSwim** (and similar) bone-conduction headphones in **MP3 mode**.
 
-Built for a simple two-step workflow: **extract to a local library**, then **sync flat to the headset**. Shokz MP3 mode plays a root-level track list — it does not browse folders — so this tool keeps the drive layout minimal on purpose.
+Shokz MP3 mode plays a **flat list at the drive root** — no folder browsing, only play/pause and forward/back. This tool is built around that constraint:
+
+1. **Extract** YouTube URLs into a local library on your computer
+2. **Manage an active pool** of tracks you want on the headset right now
+3. **Sync** those MP3s to the device root (no subfolders)
+
+Optional **voice intros** (macOS) speak the track name before the music starts — useful when you're biking, swimming, or running and can't see the filename.
 
 ## Why this exists
 
-- Download any public YouTube video as a high-quality MP3
-- Keep a permanent library on your Mac at `~/Documents/mp3-songs`
-- Copy tracks to the headset root when `SWIM PRO` is plugged in via USB
-- Avoid managing subfolders on the device
+OpenSwim and related Shokz models are great for workouts, but getting music onto them is awkward: drag-and-drop works, yet skip/back through dozens of files is painful. This CLI keeps a large **archive** on your Mac while rotating a small **active pool** (~10 tracks) on the headset.
 
 ## Prerequisites
 
-- **Python 3.10+**
-- **ffmpeg** — `brew install ffmpeg`
-- **yt-dlp** dependencies — installed via `requirements.txt`
+| Requirement | Notes |
+|-------------|--------|
+| **Python 3.10+** | |
+| **ffmpeg** | `brew install ffmpeg` (macOS) |
+| **macOS** (optional) | Voice intros need the built-in `say` command |
 
-## Setup
+## Install
 
 ```bash
-git clone git@github.com:bcharleson/mp3-yt-extractor.git
-cd mp3-yt-extractor
+git clone https://github.com/bcharleson/shockz-mp3-manager-cli.git
+cd shockz-mp3-manager-cli
 
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -e .
 ```
 
-## Where files live
+Verify:
 
-| Location | Purpose |
-|----------|---------|
-| `~/Documents/mp3-songs/` | Local MP3 library (source of truth) |
-| `/Volumes/SWIM PRO/` | Shokz headset — flat root only |
+```bash
+shockz --help
+shockz config
+```
 
-Audio files stay outside this repo. The tool manages paths; it does not store your music in git.
+## Configuration
+
+All paths and defaults are controlled by **environment variables**. Copy the example file and edit:
+
+```bash
+cp .env.example .env
+# edit .env, then:
+set -a && source .env && set +a
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SHOCKZ_LIBRARY_DIR` | `~/Music/shockz-library` | Local MP3 archive |
+| `SHOCKZ_DEVICE_PATH` | `/Volumes/SWIM PRO` | Headset mount when USB-connected |
+| `SHOCKZ_ANNOUNCE` | `true` | Enable voice intros on new downloads |
+| `SHOCKZ_ANNOUNCE_VOICE` | `Samantha` | macOS TTS voice |
+| `SHOCKZ_DEFAULT_BITRATE` | `320` | MP3 kbps for downloads |
+| `SHOCKZ_RECOMMENDED_MAX_TRACKS` | `10` | Hint when active pool grows large |
+
+Run `shockz config` to see effective settings.
+
+**Audio files never live in this repo** — only the tool and your local `.env` (gitignored).
+
+## Storage model
+
+| Tier | Location | Purpose |
+|------|----------|---------|
+| **Library** | `SHOCKZ_LIBRARY_DIR` | Everything you've downloaded |
+| **Active pool** | `.on-device.txt` in library dir | Tracks that should be on the headset |
+| **Headset** | `SHOCKZ_DEVICE_PATH` (root only) | What's physically on the device |
 
 ## Quick start
 
 ```bash
-source venv/bin/activate
+# Plug in Shokz via USB (optional — auto-syncs if connected)
+shockz extract "https://www.youtube.com/watch?v=VIDEO_ID"
 
-# 1. Plug in Shokz (optional — auto-syncs if connected)
-# 2. Download a track
-python extractor.py extract "https://www.youtube.com/watch?v=VIDEO_ID"
-
-# 3. Eject when done
+# Eject when done (macOS)
 diskutil eject '/Volumes/SWIM PRO'
 ```
+
+With voice intros enabled, you'll hear a short spoken label, a brief pause, then the music.
+
+## Voice intros
+
+Voice intros use macOS `say` + ffmpeg. Disable globally:
+
+```bash
+export SHOCKZ_ANNOUNCE=false
+```
+
+Or per download:
+
+```bash
+shockz extract "https://youtube.com/..." --no-announce
+```
+
+Custom spoken line:
+
+```bash
+shockz extract "https://youtube.com/..." -a "my custom intro"
+shockz announce "Track Name.mp3" -a "custom intro for existing file"
+```
+
+Re-running `announce` on the same file **prepends another intro** — run once per track unless redoing intentionally.
+
+On Linux/Windows, use `--no-announce` or `SHOCKZ_ANNOUNCE=false` (no `say` available).
 
 ## Commands
 
 ### `extract` — download from YouTube
 
-Saves to `~/Documents/mp3-songs/`. Syncs to the headset automatically when `SWIM PRO` is mounted, unless you pass `--no-sync`.
-
 ```bash
-python extractor.py extract "https://youtu.be/VIDEO_ID"
-python extractor.py extract "https://youtu.be/VIDEO_ID" -f "My Custom Title"
-python extractor.py extract "https://youtu.be/VIDEO_ID" --no-sync
-python extractor.py extract "https://youtu.be/VIDEO_ID" -b 256
+shockz extract "https://youtu.be/VIDEO_ID"
+shockz extract "URL" -f "My Custom Title"
+shockz extract "URL" --archive          # library only, not active pool
+shockz extract "URL" --no-sync          # don't copy to headset
+shockz extract "URL" -b 256
+shockz extract "URL" --no-announce
 ```
 
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--bitrate` | `-b` | `320` | MP3 bitrate: `128`, `192`, `256`, `320` |
-| `--filename` | `-f` | video title | Library filename without `.mp3` |
-| `--sync` / `--no-sync` | | sync if connected | Copy to headset after download |
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--bitrate` | `-b` | MP3 bitrate: 128, 192, 256, 320 |
+| `--filename` | `-f` | Library filename (no extension) |
+| `--announce` | `-a` | Custom spoken intro |
+| `--no-announce` | | Skip voice intro |
+| `--archive` | | Don't add to active pool |
+| `--sync` / `--no-sync` | | Copy to headset after download |
 
-### `sync` — copy library → headset
-
-Writes MP3s to the **root** of `SWIM PRO`. No subfolders.
+### `pool` — manage the active pool
 
 ```bash
-# Sync entire library
-python extractor.py sync
-
-# Sync one track (exact name or partial match)
-python extractor.py sync "Vol. 27"
-python extractor.py sync "Two Friends - Big Bootie Mix, Vol. 27.mp3"
+shockz pool list
+shockz pool add "Track Name"
+shockz pool remove "Old Track"
 ```
 
-### `list` — show library contents
+### `sync` — copy pool → headset
 
 ```bash
-python extractor.py list
+shockz sync                  # active pool only
+shockz sync --prune          # remove headset files not in pool
+shockz sync --all            # entire library (use sparingly)
+shockz sync "partial name"   # one track
+```
+
+### `status`, `list`, `config`, `announce`
+
+```bash
+shockz status                # library vs pool vs device
+shockz list                  # library filenames
+shockz config                # show effective configuration
+shockz announce "Track"      # add intro to existing file
 ```
 
 ## Typical workflows
 
-**New track while headset is plugged in**
+**New track for the headset**
 
 ```bash
-python extractor.py extract "https://youtube.com/..."
+shockz extract "https://youtube.com/..."
 diskutil eject '/Volumes/SWIM PRO'
 ```
 
-**Batch refresh after adding several tracks offline**
+**Stock up for later (don't put on headset)**
 
 ```bash
-python extractor.py extract "..." --no-sync
-python extractor.py extract "..." --no-sync
-# plug in headset
-python extractor.py sync
+shockz extract "URL" --archive
 ```
 
-**Check what you have before a swim**
+**Rotate what's on the headset**
 
 ```bash
-python extractor.py list
+shockz pool remove "Old Mix"
+shockz pool add "New Mix"
+shockz sync --prune
 ```
 
-## Shokz notes
+## Shokz / OpenSwim notes
 
-- The OpenSwim mounts as **`SWIM PRO`** at `/Volumes/SWIM PRO`
+- OpenSwim mounts as **`SWIM PRO`** at `/Volumes/SWIM PRO` on macOS
 - Use **MP3 mode** on the headset for local file playback
-- Keep files at the drive root — nested folders may not be navigable in MP3 mode
-- Always eject before unplugging: `diskutil eject '/Volumes/SWIM PRO'`
+- Keep files at the **drive root** — nested folders may not be navigable
+- Always eject before unplugging
+- Copies use `copyfile` (not `copy2`) because the device uses FAT and rejects macOS metadata
 
 ## Stack
 
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) — YouTube download
-- [ffmpeg](https://ffmpeg.org/) — audio conversion
+- [ffmpeg](https://ffmpeg.org/) — audio conversion and intro merging
 - [Click](https://click.palletsprojects.com/) — CLI
 - [Rich](https://github.com/Textualize/rich) — terminal output
 
 ## License
 
-Private personal tool. Not licensed for redistribution.
+MIT — see [LICENSE](LICENSE).
+
+## Contributing
+
+Issues and PRs welcome. Please don't commit MP3s or personal `.env` files.

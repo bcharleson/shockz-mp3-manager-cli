@@ -1,8 +1,39 @@
+# Python
 venv/
+.venv/
 __pycache__/
 *.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Environment and local overrides
+.env
+.env.local
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Media (never commit user library files)
 *.mp3
+*.m4a
+*.wav
+*.aiff
 *.webp
 *.jpg
-.env
+*.jpeg
+*.png
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
