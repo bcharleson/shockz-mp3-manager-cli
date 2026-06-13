@@ -3,8 +3,50 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
+
+_CONFIG_LOADED = False
+
+
+def _strip_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
+
+
+def _load_env_file(path: Path) -> None:
+    if not path.is_file():
+        return
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        match = re.match(r"([A-Za-z_][A-Za-z0-9_]*)=(.*)", line)
+        if not match:
+            continue
+        key, value = match.group(1), _strip_quotes(match.group(2).strip())
+        os.environ.setdefault(key, value)
+
+
+def load_env_files() -> None:
+    """Load optional env files without overriding existing variables."""
+    global _CONFIG_LOADED
+    if _CONFIG_LOADED:
+        return
+    _CONFIG_LOADED = True
+
+    candidates: list[Path] = []
+    if custom := os.environ.get("SHOCKZ_ENV_FILE"):
+        candidates.append(Path(custom).expanduser())
+    candidates.append(Path.cwd() / ".env")
+    candidates.append(Path.home() / ".config" / "shockz-mp3-manager" / ".env")
+
+    for path in candidates:
+        _load_env_file(path)
 
 
 def _expand_path(value: str) -> Path:
@@ -55,4 +97,5 @@ class Settings:
 
 
 def get_settings() -> Settings:
+    load_env_files()
     return Settings.from_env()

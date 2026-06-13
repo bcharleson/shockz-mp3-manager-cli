@@ -42,12 +42,17 @@ shockz config
 
 ## Configuration
 
-All paths and defaults are controlled by **environment variables**. Copy the example file and edit:
+All paths and defaults are controlled by **environment variables**. Copy the example file and edit (optional — auto-loaded from `./.env` or `~/.config/shockz-mp3-manager/.env`):
 
 ```bash
 cp .env.example .env
-# edit .env, then:
-set -a && source .env && set +a
+# edit .env — no need to export manually; shockz loads it on each run
+```
+
+Or point to a custom file:
+
+```bash
+export SHOCKZ_ENV_FILE=~/my-shockz.env
 ```
 
 | Variable | Default | Description |
